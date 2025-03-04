@@ -181,6 +181,7 @@ def verify_scs(scs_result, words):
     """Verifies that all words are subsequences of the computed SCS."""
     return all(is_subsequence(word, scs_result) for word in words)
 
+#TODO - this is not optimal, fix it
 def calc_scs_dp(seqs):
     """Finds the Shortest Common Supersequence (SCS) of a list of words by pairwise merging."""
     # Make a copy to avoid modifying the original list.
