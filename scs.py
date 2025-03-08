@@ -5,7 +5,7 @@ with advanced checks and optimality testing.
 
 Assumptions:
   - There is an unknown parent x ∈ {0,1}^n.
-  - We are given r binary traces, each obtained from x by at most t deletions.
+  - We are given k binary traces, each obtained from x by at most t deletions.
   - Our goal is to compute the shortest common supersequence (SCS) z such that each trace is a subsequence of z.
   
 We use a banded BFS over states defined by a tuple of pointers (one per trace). 
@@ -24,8 +24,16 @@ Authors: Nawaf Salman, Nahel Awidat
 
 import random
 import time
+import time
+import matplotlib.pyplot as plt
 from collections import deque
 from itertools import permutations, combinations
+
+DEBUG_MODE = False  # change to True to run in debug mode (enables more prints)
+
+def debug_print(*args, **kwargs):
+    if DEBUG_MODE:
+        print(*args, **kwargs)
 
 # -------------------------------------------------
 # Helper: Check if 'small' is a subsequence of 'large'
@@ -49,13 +57,13 @@ def calc_scs_bfs(sequences, t):
     Returns:
         (scs, cost) where scs is the SCS (a string) and cost is its length.
     """
-    r = len(sequences)
+    k = len(sequences)
     # Precompute lengths.
     lengths = [len(seq) for seq in sequences]
     
-    # A state is an r-tuple of indices (0-indexed). Start state is (0,0,...,0).
-    start = tuple(0 for _ in range(r))
-    goal = tuple(lengths[i] for i in range(r))
+    # A state is an k-tuple of indices (0-indexed). Start state is (0,0,...,0).
+    start = tuple(0 for _ in range(k))
+    goal = tuple(lengths[i] for i in range(k))
     
     # Each state has an associated cost (length of SCS built so far), parent, and char that was appended.
     # We'll use a dictionary: state -> (cost, parent_state, char)
@@ -64,7 +72,7 @@ def calc_scs_bfs(sequences, t):
     
     # Deletion invariant: for every active sequence i (i.e. p_i < len(seq)), cost - p_i <= t.
     def valid_state(state, cost):
-        for i in range(r):
+        for i in range(k):
             if state[i] < lengths[i]:
                 if cost - state[i] > t:
                     return False
@@ -87,15 +95,12 @@ def calc_scs_bfs(sequences, t):
         # Check if goal reached.
         if state == goal:
             scs = reconstruct(state)
-            if not verify_scs(scs, sequences):  # sanity check - the output is a common supersequence
-                print("error: calc_scs_bfs failed to produce a valid SCS.\n")
-                exit(-1)
             return reconstruct(state), cost
         
         # Determine candidate letters from active sequences.
         # R is the set of letters that appear as the next character in at least one active sequence.
         R = set()
-        for i in range(r):
+        for i in range(k):
             if state[i] < lengths[i]:
                 R.add(sequences[i][state[i]])
         # If R is empty (should not happen because if all are exhausted, state==goal), skip.
@@ -105,7 +110,7 @@ def calc_scs_bfs(sequences, t):
         # For each candidate letter, compute the new state.
         for letter in R:
             new_state = []
-            for i in range(r):
+            for i in range(k):
                 # If sequence i is active and its next letter equals 'letter', advance pointer.
                 if state[i] < lengths[i] and sequences[i][state[i]] == letter:
                     new_state.append(state[i] + 1)
@@ -131,15 +136,18 @@ def calc_scs_bfs(sequences, t):
 # -------------------------------------------------
 
 def scs_two(X, Y):
-    """Returns the Shortest Common Supersequence (SCS) of two words using DP reconstruction.
-       If one string is a subsequence of the other, returns the longer one."""
+    """
+    Returns the Shortest Common Supersequence (SCS) of two words using a DP table 
+    + backtracking reconstruction. If one string is a subsequence of the other, 
+    it returns the longer one immediately.
+    """
     if is_subsequence(X, Y):
         return Y
     if is_subsequence(Y, X):
         return X
 
     m, n = len(X), len(Y)
-    # Build DP table for SCS length.
+    # DP table for lengths of SCS
     dp = [[0] * (n + 1) for _ in range(m + 1)]
     for i in range(m + 1):
         dp[i][0] = i
@@ -153,7 +161,7 @@ def scs_two(X, Y):
             else:
                 dp[i][j] = min(dp[i - 1][j], dp[i][j - 1]) + 1
 
-    # Reconstruct the SCS from the DP table.
+    # Reconstruct SCS from dp table
     i, j = m, n
     result = []
     while i > 0 and j > 0:
@@ -167,6 +175,7 @@ def scs_two(X, Y):
         else:
             result.append(Y[j - 1])
             j -= 1
+    # Append leftovers
     while i > 0:
         result.append(X[i - 1])
         i -= 1
@@ -174,50 +183,40 @@ def scs_two(X, Y):
         result.append(Y[j - 1])
         j -= 1
 
-    # The result is built backwards.
     return "".join(reversed(result))
 
 def verify_scs(scs_result, words):
     """Verifies that all words are subsequences of the computed SCS."""
     return all(is_subsequence(word, scs_result) for word in words)
 
-#TODO - this is not optimal, fix it
 def calc_scs_dp(seqs):
-    """Finds the Shortest Common Supersequence (SCS) of a list of words by pairwise merging."""
-    # Make a copy to avoid modifying the original list.
-    words = seqs[:]
-    
-    # Pre-check: if any input word is a common supersequence of all, return the shortest.
-    candidates = [w for w in words if all(is_subsequence(s, w) for s in words)]
-    if candidates:
-        return min(candidates, key=len)
-    
-    # Merge pairwise until one word remains.
-    while len(words) > 1:
-        min_scs = None
-        min_len = float('inf')
-        best_pair = (None, None)
-        
-        # Try all pairs and pick the best merge (the one with minimum length).
-        for i in range(len(words)):
-            for j in range(i + 1, len(words)):
-                merged = scs_two(words[i], words[j])
-                if len(merged) < min_len:
-                    min_len = len(merged)
-                    min_scs = merged
-                    best_pair = (i, j)
-        
-        # Remove the two words that were merged.
-        i, j = best_pair
-        words = [words[k] for k in range(len(words)) if k not in (i, j)]
-        words.append(min_scs)
-    
-    final_scs = words[0]
-    if not verify_scs(final_scs, seqs):
-        print("error: calc_scs_dp failed to produce a valid SCS.\n")
-        exit(-1)
-    
-    return final_scs
+    """
+    Find the globally shortest SCS for a list of words by:
+      1. Checking if any single word is already a supersequence of all.
+      2. Otherwise, for each permutation of seqs, merge from left to right
+         using 'scs_two' and pick the overall shortest.
+    """
+    words = list(seqs)
+    # Quick check: if any word is already a supersequence of all, pick the shortest such word.
+    superseq_candidates = [w for w in words if all(is_subsequence(s, w) for s in words)]
+    if superseq_candidates:
+        return min(superseq_candidates, key=len)
+
+    best_scs = None
+    # Try all permutations of the input words:
+    for perm in permutations(words):
+        merged = perm[0]
+        for i in range(1, len(perm)):
+            merged = scs_two(merged, perm[i])
+        # Keep track of the globally shortest
+        if best_scs is None or len(merged) < len(best_scs):
+            best_scs = merged
+
+    # Final check
+    if not verify_scs(best_scs, seqs):
+        raise ValueError("calc_scs_dp failed to produce a valid SCS.")
+
+    return best_scs
 
 # -------------------------------------------------
 # Test Data Generation Utilities
@@ -242,56 +241,72 @@ def generate_trace(x, t, delete_exactly=True):
     trace = "".join(x[i] for i in range(n) if i not in dset)
     return trace, dset
 
-def generate_traces(x, r, t, delete_exactly=True, ensure_nonuniversal=True):
+def generate_traces(x, k, t, delete_exactly=True, ensure_nonuniversal=True):
     """
-    Generate r traces from x by deleting up to t symbols (exactly t if delete_exactly=True).
+    Generate k traces from x by deleting up to t symbols (exactly t if delete_exactly=True).
     If ensure_nonuniversal is True, ensure that for every position in x at least one trace keeps that symbol.
     Returns a list of traces.
     """
     n = len(x)
     traces = []
     deletion_sets = []
-    for _ in range(r):
+    for _ in range(k):
         trace, dset = generate_trace(x, t, delete_exactly=delete_exactly)
         traces.append(trace)
         deletion_sets.append(dset)
     if ensure_nonuniversal:
         for pos in range(n):
             if all(pos in ds for ds in deletion_sets):
-                j = random.randrange(r)
+                j = random.randrange(k)
                 deletion_sets[j].remove(pos)
                 traces[j] = "".join(x[i] for i in range(n) if i not in deletion_sets[j])
     return traces
 
 
 # -------------------------------------------------
+# Basic Checks
+# -------------------------------------------------
+def test_scs_basic(seqs, t, expected=None):
+    scs, cost = calc_scs_bfs(seqs, t)
+    debug_print("Basic Test: sequences =", seqs)
+    debug_print("  Computed SCS:", scs, "with length", cost)
+    for seq in seqs:
+        if not is_subsequence(seq, scs):
+            print("  ERROR: {} is not a subsequence of {}".format(seq, scs))
+            exit(-1)
+    if expected is not None and scs != expected:
+        print("  Note: expected SCS =", expected)
+        exit(-1)
+    return True
+
+# -------------------------------------------------
 # Advanced Checks
 # -------------------------------------------------
 def advanced_checks():
-    print("=== Advanced Checks ===")
+    debug_print("=== Advanced Checks ===")
     
     # Test 1: Small instance optimality test.
-    print("Test 1: small instance optimality check")
+    debug_print("Test 1: small instance optimality check")
     x_small = generate_random_x(20)
     r_small = 3
     t_small = 2
     traces1 = generate_traces(x_small, r_small, t_small, delete_exactly=True, ensure_nonuniversal=True)
-    print("Parent x_small:", x_small)
-    print("Traces:", traces1)
+    debug_print("Parent x_small:", x_small)
+    debug_print("Traces:", traces1)
     # start = time.time()
     scs1, cost1 = calc_scs_bfs(traces1, t_small)
     # elapsed = time.time() - start
     # print("Elapsed time: {:.4f} seconds".format(elapsed))
     scs_dp = calc_scs_dp(traces1)
     scs_dp_len = len(scs_dp)
-    print("Banded BFS SCS length:", cost1)
-    print("Known DP SCS length:", scs_dp_len)
+    debug_print("Banded BFS SCS length:", cost1)
+    debug_print("Known DP SCS length:", scs_dp_len)
     if cost1 == scs_dp_len:
         # lenght comparision is good enough:
         #   - scs_dp function returns a valid common supersequence (else it will fail before returning)
         #   - if scs_dp_len == cost1, it means calc_scs_bfs returned a valid SCS
         # we can't test the SCS directly because 
-        print("Test 1 PASSED: Optimality confirmed.\n")
+        debug_print("Test 1 PASSED: Optimality confirmed.\n")
     else:
         print("Test 1 FAILED: SCS lenght mismatch.\n")
         print("traces   - ", traces1)
@@ -300,7 +315,7 @@ def advanced_checks():
         exit(-1)
     
     # Test 2: Varying deletion counts (some sequences delete less than t).
-    print("Test 2: Varying deletion counts (delete up to t).")
+    debug_print("Test 2: Varying deletion counts (delete up to t).")
     x2 = generate_random_x(50)
     r2 = 3
     t2 = 5
@@ -309,17 +324,17 @@ def advanced_checks():
         trace, _ = generate_trace(x2, t2, delete_exactly=False)
         traces2.append(trace)
     scs2, cost2 = calc_scs_bfs(traces2, t2)
-    print("Parent x2:", x2)
-    print("Traces:", traces2)
-    print("Computed SCS:", scs2, "length:", cost2)
-    if all(is_subsequence(trace, scs2) for trace in traces2):
-        print("Test 2 PASSED: All traces are subsequences.\n")
+    debug_print("Parent x2:", x2)
+    debug_print("Traces:", traces2)
+    debug_print("Computed SCS:", scs2, "length:", cost2)
+    if verify_scs(scs2, traces2):
+        debug_print("Test 2 PASSED: All traces are subsequences.\n")
     else:
         print("Test 2 FAILED.\n")
         exit(-1)
     
     # Test 3: Universal deletion (SCS not equal to x).
-    print("Test 3: Universal deletion (forcing SCS != x).")
+    debug_print("Test 3: Universal deletion (forcing SCS != x).")
     x3 = generate_random_x(100)
     r3 = 3
     t3 = 10
@@ -332,63 +347,145 @@ def advanced_checks():
         new_trace = "".join(x3[i] for i in range(len(x3)) if i not in dset)
         traces3.append(new_trace)
     scs3, cost3 = calc_scs_bfs(traces3, t3)
-    print("Parent x3:", x3)
-    print("Traces:", traces3)
-    print("Computed SCS:", scs3, "length:", cost3)
-    if all(is_subsequence(trace, scs3) for trace in traces3):
-        print("Test 3 PASSED: All traces are subsequences.\n")
+    debug_print("Parent x3:", x3)
+    debug_print("Traces:", traces3)
+    debug_print("Computed SCS:", scs3, "length:", cost3)
+    if verify_scs(scs3, traces3):
+        debug_print("Test 3 PASSED: All traces are subsequences.\n")
     else:
         print("Test 3 FAILED.\n")
         exit(-1)
     
     # Test 4: Timing test on moderately long instance.
-    print("Test 4: Timing test on long instance.")
+    debug_print("Test 4: Timing test on long instance.")
     n4 = 4000
     x4 = generate_random_x(n4)
     r4 = 3
     t4 = 5
     traces4 = generate_traces(x4, r4, t4, delete_exactly=True, ensure_nonuniversal=True)
-    print("Start BFS scs search...")
+    debug_print("Start BFS scs search...")
     start = time.time()
     scs4, cost4 = calc_scs_bfs(traces4, t4)
     elapsed = time.time() - start
-    print("Elapsed time: {:.4f} seconds".format(elapsed))
+    debug_print("Elapsed time: {:.4f} seconds".format(elapsed))
     
-    print("Start DP scs search...")
+    debug_print("Start DP scs search...")
     start = time.time()
     _ = calc_scs_dp(traces4)
     elapsed = time.time() - start
-    print("Elapsed time: {:.4f} seconds".format(elapsed))
+    debug_print("Elapsed time: {:.4f} seconds".format(elapsed))
 
-    if all(is_subsequence(trace, scs4) for trace in traces4):
-        print("Test 4 PASSED: All traces are subsequences.\n")
+    if verify_scs(scs4, traces4):
+        debug_print("Test 4 PASSED: All traces are subsequences.\n")
     else:
         print("Test 4 FAILED.\n")
         exit(-1)
     
-    print("Advanced checks completed.")
+
+def experiment_timing():
+    
+    # 1) n in [10..1000], k=3, t=5 => measure BFS time and DP time, plot times vs n.
+    Nvals = list(range(10,1000,10))
+    BFS_times_n = []
+    DP_times_n = []
+    k_fixed = 3
+    t_fixed = 5
+    for n in Nvals:
+        debug_print(f"\nExperiment: n={n}, k={k_fixed}, t={t_fixed}")
+        x = generate_random_x(n)
+        # Each trace => length n-t
+        traces = generate_traces(x, k_fixed, t_fixed)
+        
+        # BFS timing
+        start = time.time()
+        scs_bfs_res, bfs_len = calc_scs_bfs(traces, t_fixed)
+        bfs_time = time.time() - start
+        
+        # DP timing
+        start = time.time()
+        scs_dp_res = calc_scs_dp(traces)
+        dp_time = time.time() - start
+        
+        BFS_times_n.append(bfs_time)
+        DP_times_n.append(dp_time)
+        
+        # Optional correctness check:
+        if not verify_scs(scs_bfs_res, traces):
+            print(f"ERROR: BFS SCS is not valid for n={n}!")
+            exit(-1)
+            # can break or continue
+        if not verify_scs(scs_dp_res, traces):
+            print(f"ERROR: DP SCS is not valid for n={n}!")
+            exit(-1)
+        debug_print(f" Banded BFS time={bfs_time:.4f}, length={bfs_len}  DP time={dp_time:.4f}, length={len(scs_dp_res)}")
+    
+    plt.figure(figsize=(8,6))
+    plt.plot(Nvals, BFS_times_n, label="Banded BFS", marker='o')
+    plt.plot(Nvals, DP_times_n, label="DP merges", marker='s')
+    plt.xlabel("n")
+    plt.ylabel("Time (seconds)")
+    plt.title(f"Timing vs. n (k={k_fixed}, t={t_fixed})")
+    plt.legend()
+    plt.savefig("scs_calc_times_vs_n")
+    
+    # 2) k in [3..10], fix n=20, t=5 => measure BFS time and DP time, plot times vs k.
+    kvals = list(range(3,11))
+    BFS_times_k = []
+    DP_times_k = []
+    n_fixed = 20
+    t_fixed = 3
+    
+    x = generate_random_x(n_fixed)
+    for k in kvals:
+        debug_print(f"\nExperiment: n={n_fixed}, k={k}, t={t_fixed}")
+        traces = generate_traces(x, k, t_fixed)
+        
+        start = time.time()
+        scs_bfs_res, bfs_len = calc_scs_bfs(traces, t_fixed)
+        bfs_time = time.time() - start
+        
+        start = time.time()
+        scs_dp_res = calc_scs_dp(traces)
+        dp_time = time.time() - start
+        
+        BFS_times_k.append(bfs_time)
+        DP_times_k.append(dp_time)
+        
+        if not verify_scs(scs_bfs_res, traces):
+            print(f"ERROR: BFS SCS is not valid for k={k}!")
+            exit(-1)
+        if not verify_scs(scs_dp_res, traces):
+            print(f"ERROR: DP SCS is not valid for k={k}!")
+            exit(-1)
+        debug_print(f" Banded BFS time={bfs_time:.4f}, length={bfs_len}  DP time={dp_time:.4f}, length={len(scs_dp_res)}")
+    
+    plt.figure(figsize=(8,6))
+    plt.plot(kvals, BFS_times_k, label="Banded BFS", marker='o')
+    plt.plot(kvals, DP_times_k, label="DP merges", marker='s')
+    plt.xlabel("k")
+    plt.ylabel("Time (seconds)")
+    plt.title(f"Timing vs. k (n={n_fixed}, t={t_fixed})")
+    plt.legend()
+    plt.savefig("scs_calc_times_vs_k")
+    
 
 # -------------------------------------------------
 # Main Testing Routine
 # -------------------------------------------------
 if __name__ == "__main__":
-    # Run a few basic tests.
-    def test_scs_basic(seqs, t, expected=None):
-        scs, cost = calc_scs_bfs(seqs, t)
-        print("Basic Test: sequences =", seqs)
-        print("  Computed SCS:", scs, "with length", cost)
-        for seq in seqs:
-            if not is_subsequence(seq, scs):
-                print("  ERROR: {} is not a subsequence of {}".format(seq, scs))
-                exit(-1)
-        if expected is not None and scs != expected:
-            print("  Note: expected SCS =", expected)
-            exit(-1)
-        print("  Basic test PASSED.\n")
-        return True
-
+    # Run a few basic tests
+    print("start basic tests ...")
     test_scs_basic(["10101", "1001"], t=1, expected="10101")
     test_scs_basic(["1100", "1100"], t=0, expected="1100")
     test_scs_basic(["1010", "1000", "1100"], t=1)
+    print("Basic tests PASSED.")
     
+    # Run more advanced checks
+    print("start advanced tests ...")
     advanced_checks()
+    print("Advanced tests PASSED.")
+    
+    # Run timing experiments
+    print("start timing experiments (this will take few minutes because of the non-optimal DP algorithm) ...")
+    experiment_timing()
+    print("Timing experiments DONE.")
