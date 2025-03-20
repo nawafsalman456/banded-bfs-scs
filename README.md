@@ -57,7 +57,7 @@ This project is designed as a research prototype. To deploy it on a live system 
 
 ## Timing Results
 
-Two timing experiments were performed:
+Three timing experiments were performed:
 
 1. **Experiment 1: Varying $$n$$ (Length of Parent String) with Fixed $$k=3$$ and $$t=5$$**
 
@@ -81,6 +81,21 @@ Two timing experiments were performed:
    - **Explanation:**  
      The BFS approach exploits the deletion invariant to restrict the state space, keeping the complexity at $$O(n \cdot (t+1)^{k-1})$$. The DP merging approach must try all permutations of sequence merging, resulting in exponential growth in $$k$$.
 
+3. **Experiment 3: Varying $$t$$ (Allowed Deletions) with Fixed $$n=500$$ and $$k=3$$**
+
+   - **Setup:**  
+     We fixed the parent length $$n=500$$ and number of sequences $$k=3$$. We varied the deletion parameter $$t$$ from 1 up to 50. For each value of $$t$$, a random parent $$x$$ of length 500 was generated, and three traces were produced by deleting exactly $$t$$     
+     symbols from $$x$$.
+   
+   - **Results:**  
+     The Banded BFS is extremely fast for small $$t$$, but as $$t$$ increases, its running time grows significantly. In contrast, the DP merging approach’s running time remains relatively stable around 1–2 seconds for these parameters, occasionally outpacing BFS for 
+     very large $$t$$.
+   
+   - **Explanation:**  
+     The Banded BFS approach has a state space of roughly $$O(n \cdot (t+1)^{k-1})$$ for fixed $$k$$, so it scales nearly linearly in $$n$$ but exponentially in $$t$$. Hence, for large $$t$$ (e.g., $$t\approx 50$$), BFS can slow down.  
+     The DP merging approach depends more on $$n$$ and $$k$$ and less on $$t$$. Since $$n=500$$ and $$k=3$$ are fixed, its running time stays within a moderate range. Nevertheless, for small $$t$$—the most common scenario in practical applications like DNA analysis—BFS 
+     remains significantly faster.
+     
 ---
 
 **Conclusion**
