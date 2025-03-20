@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 from collections import deque
 from itertools import permutations, combinations
 
-DEBUG_MODE = False  # change to True to run in debug mode (enables more prints)
+DEBUG_MODE = True  # change to True to run in debug mode (enables more prints)
 
 def debug_print(*args, **kwargs):
     if DEBUG_MODE:
@@ -467,7 +467,46 @@ def experiment_timing():
     plt.title(f"Timing vs. k (n={n_fixed}, t={t_fixed})")
     plt.legend()
     plt.savefig("scs_calc_times_vs_k")
-    
+
+    # 3) t in [1..50], fix n=500, k=3 => measure BFS time and DP time, plot times vs t.
+    tvals = list(range(1, 51))
+    BFS_times_t = []
+    DP_times_t = []
+    n_fixed = 500
+    k_fixed = 3
+
+    for t in tvals:
+        debug_print(f"\nExperiment: n={n_fixed}, k={k_fixed}, t={t}")
+        x = generate_random_x(n_fixed)
+        traces = generate_traces(x, k_fixed, t, delete_exactly=True, ensure_nonuniversal=True)
+        
+        start = time.time()
+        scs_bfs_res, bfs_len = calc_scs_bfs(traces, t)
+        bfs_time = time.time() - start
+        
+        start = time.time()
+        scs_dp_res = calc_scs_dp(traces)
+        dp_time = time.time() - start
+        
+        BFS_times_t.append(bfs_time)
+        DP_times_t.append(dp_time)
+        
+        if not verify_scs(scs_bfs_res, traces):
+            print(f"ERROR: BFS SCS is not valid for t={t}!")
+            exit(-1)
+        if not verify_scs(scs_dp_res, traces):
+            print(f"ERROR: DP SCS is not valid for t={t}!")
+            exit(-1)
+        debug_print(f" Banded BFS time={bfs_time:.4f}, length={bfs_len}  DP time={dp_time:.4f}, length={len(scs_dp_res)}")
+
+    plt.figure(figsize=(8,6))
+    plt.plot(tvals, BFS_times_t, label="Banded BFS", marker='o')
+    plt.plot(tvals, DP_times_t, label="DP merges", marker='s')
+    plt.xlabel("t (allowed deletions)")
+    plt.ylabel("Time (seconds)")
+    plt.title(f"Timing vs. t (n={n_fixed}, k={k_fixed})")
+    plt.legend()
+    plt.savefig("scs_calc_times_vs_t.png")
 
 # -------------------------------------------------
 # Main Testing Routine
